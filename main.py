@@ -52,11 +52,11 @@ def call_quiz_model(topic: str, num_questions: int, difficulty: str):
         )}
     ]
     resp = openai.chat.completions.create(
-        model="gpt-3.5",
+        model="gpt-3.5-turbo",
         messages=messages,
         temperature=0.4,
     )
-    raw = resp["choices"][0]["message"]["content"].strip()
+    raw = resp.choices[0].message.content.strip()
     return parse_strict_json(raw)
 
 
