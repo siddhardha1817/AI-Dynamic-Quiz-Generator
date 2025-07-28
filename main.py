@@ -143,44 +143,44 @@ def submit():
     return render_template_string(RESULT_TMPL, score=score, total=len(questions), results=results, meta=meta)
 
 
-FORM_TMPL = r"""
+FORM_TMPL = """
 <!DOCTYPE html>
-<html lang=\"en\" data-theme=\"light\">
+<html lang="en" data-theme="light">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Dynamic Quiz Generator</title>
-  <link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css\" rel=\"stylesheet\" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
     body { background: radial-gradient(circle at 10% 20%, #eef2ff 0%, #e0e7ff 50%, #c7d2fe 100%); min-height: 100vh; }
     .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(14px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); padding: 1.5rem; }
   </style>
 </head>
 <body>
-  <div class=\"container py-5\">
-    <h1 class=\"mb-4 text-primary\">🧠 Dynamic Quiz Generator</h1>
-    <div class=\"glass-card\">
-      <form action=\"/generate\" method=\"POST\">
-        <div class=\"mb-3\">
-          <label class=\"form-label\">Topic</label>
-          <input type=\"text\" name=\"topic\" class=\"form-control\" placeholder=\"e.g. Object Oriented Programming in Java\" required />
+  <div class="container py-5">
+    <h1 class="mb-4 text-primary">🧠 Dynamic Quiz Generator</h1>
+    <div class="glass-card">
+      <form action="/generate" method="POST">
+        <div class="mb-3">
+          <label class="form-label">Topic</label>
+          <input type="text" name="topic" class="form-control" placeholder="e.g. Object Oriented Programming in Java" required />
         </div>
-        <div class=\"row\">
-          <div class=\"col-md-4 mb-3\">
-            <label class=\"form-label\">Difficulty</label>
-            <select name=\"difficulty\" class=\"form-select\">
+        <div class="row">
+          <div class="col-md-4 mb-3">
+            <label class="form-label">Difficulty</label>
+            <select name="difficulty" class="form-select">
               <option>Easy</option>
               <option selected>Medium</option>
               <option>Hard</option>
             </select>
           </div>
-          <div class=\"col-md-4 mb-3\">
-          <label class=\"form-label\">Number of Questions (1-20)</label>
-          <input type=\"number\" min=\"1\" max=\"20\" value=\"5\" name=\"num_questions\" class=\"form-control\" required />
+          <div class="col-md-4 mb-3">
+          <label class="form-label">Number of Questions (1-20)</label>
+          <input type="number" min="1" max="20" value="5" name="num_questions" class="form-control" required />
         </div>
         </div>
-        <div class=\"d-flex justify-content-end\">
-          <button type=\"submit\" class=\"btn btn-primary\">Generate Quiz</button>
+        <div class="d-flex justify-content-end">
+          <button type="submit" class="btn btn-primary">Generate Quiz</button>
         </div>
       </form>
     </div>
@@ -190,14 +190,14 @@ FORM_TMPL = r"""
 """
 
 
-QUIZ_TMPL = r"""
+QUIZ_TMPL = """
 <!DOCTYPE html>
-<html lang=\"en\" data-theme=\"light\">
+<html lang="en" data-theme="light">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Take Quiz</title>
-  <link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css\" rel=\"stylesheet\" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
     body { background: radial-gradient(circle at 10% 20%, #eef2ff 0%, #e0e7ff 50%, #c7d2fe 100%); min-height: 100vh; }
     .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(14px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); padding: 1.5rem; }
@@ -205,24 +205,24 @@ QUIZ_TMPL = r"""
   </style>
 </head>
 <body>
-  <div class=\"container py-5\">
-    <h1 class=\"mb-2 text-primary\">📝 Quiz</h1>
-    <p class=\"text-muted\">Topic: <strong>{{ meta.topic }}</strong> · Difficulty: <strong>{{ meta.difficulty }}</strong></p>
-    <form action=\"/submit\" method=\"POST\" class=\"glass-card\">
+  <div class="container py-5">
+    <h1 class="mb-2 text-primary">📝 Quiz</h1>
+    <p class="text-muted">Topic: <strong>{{ meta.topic }}</strong> · Difficulty: <strong>{{ meta.difficulty }}</strong></p>
+    <form action="/submit" method="POST" class="glass-card">
       {% for q in quiz.questions %}
-        <div class=\"question\">
-          <p class=\"fw-semibold\">{{ loop.index }}. {{ q.q }}</p>
+        <div class="question">
+          <p class="fw-semibold">{{ loop.index }}. {{ q.q }}</p>
           {% for opt in q.options %}
-            <div class=\"form-check\">
-              <input class=\"form-check-input\" type=\"radio\" name=\"q{{ loop.parent.index0 }}\" id=\"q{{ loop.parent.index0 }}_{{ loop.index0 }}\" value=\"{{ loop.index0 }}\" required>
-              <label class=\"form-check-label\" for=\"q{{ loop.parent.index0 }}_{{ loop.index0 }}\">{{ opt }}</label>
+            <div class="form-check">
+              <input class="form-check-input" type="radio" name="q{{ loop.parent.index0 }}" id="q{{ loop.parent.index0 }}_{{ loop.index0 }}" value="{{ loop.index0 }}" required>
+              <label class="form-check-label" for="q{{ loop.parent.index0 }}_{{ loop.index0 }}">{{ opt }}</label>
             </div>
           {% endfor %}
         </div>
         <hr/>
       {% endfor %}
-      <div class=\"d-flex justify-content-end\">
-        <button class=\"btn btn-success\" type=\"submit\">Submit</button>
+      <div class="d-flex justify-content-end">
+        <button class="btn btn-success" type="submit">Submit</button>
       </div>
     </form>
   </div>
@@ -231,14 +231,14 @@ QUIZ_TMPL = r"""
 """
 
 
-RESULT_TMPL = r"""
+RESULT_TMPL = """
 <!DOCTYPE html>
-<html lang=\"en\" data-theme=\"light\">
+<html lang="en" data-theme="light">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Results</title>
-  <link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css\" rel=\"stylesheet\" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
   <style>
     body { background: radial-gradient(circle at 10% 20%, #eef2ff 0%, #e0e7ff 50%, #c7d2fe 100%); min-height: 100vh; }
     .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(14px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); padding: 1.5rem; }
@@ -247,17 +247,17 @@ RESULT_TMPL = r"""
   </style>
 </head>
 <body>
-  <div class=\"container py-5\">
-    <h1 class=\"mb-3 text-primary\">📊 Your Score</h1>
-    <div class=\"glass-card mb-4\">
+  <div class="container py-5">
+    <h1 class="mb-3 text-primary">📊 Your Score</h1>
+    <div class="glass-card mb-4">
       <h4>Score: {{ score }}/{{ total }}</h4>
-      <p class=\"text-muted\">Topic: <strong>{{ meta.topic }}</strong> · Difficulty: <strong>{{ meta.difficulty }}</strong></p>
-      <a href=\"/\" class=\"btn btn-outline-primary btn-sm\">Generate New Quiz</a>
+      <p class="text-muted">Topic: <strong>{{ meta.topic }}</strong> · Difficulty: <strong>{{ meta.difficulty }}</strong></p>
+      <a href="/" class="btn btn-outline-primary btn-sm">Generate New Quiz</a>
     </div>
 
     {% for r in results %}
-      <div class=\"glass-card mb-3\">
-        <p class=\"fw-semibold\">{{ loop.index }}. {{ r.q }}</p>
+      <div class="glass-card mb-3">
+        <p class="fw-semibold">{{ loop.index }}. {{ r.q }}</p>
         <ul>
           {% for opt in r.options %}
             <li
@@ -277,20 +277,20 @@ RESULT_TMPL = r"""
 """
 
 
-ERROR_TMPL = r"""
+ERROR_TMPL = """
 <!DOCTYPE html>
-<html lang=\"en\" data-theme=\"light\">
+<html lang="en" data-theme="light">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Error</title>
-  <link href=\"https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css\" rel=\"stylesheet\" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
 </head>
 <body>
-  <div class=\"container py-5\">
-    <h1 class=\"text-danger\">Error</h1>
+  <div class="container py-5">
+    <h1 class="text-danger">Error</h1>
     <p>{{ error }}</p>
-    <a href=\"/\" class=\"btn btn-primary\">Back</a>
+    <a href="/" class="btn btn-primary">Back</a>
   </div>
 </body>
 </html>
