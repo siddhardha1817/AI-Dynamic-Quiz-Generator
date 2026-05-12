@@ -1,8 +1,7 @@
 from boltiotai import openai
 import os
 import json
-import re
-from flask import Flask, render_template_string, request, session, redirect, url_for
+from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 
 # ========================
 # OpenAI / BoltIOT config
@@ -16,281 +15,174 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-change-me")
 
 SYSTEM_PROMPT = (
-    "You are an expert question setter. Generate high-quality, unambiguous multiple-choice "
-    "questions. Output STRICTLY valid JSON that can be parsed by Python's json.loads(). "
-    "Do not include markdown code fences."
+    "You are an expert educational assistant. Generate a multiple-choice quiz based on the given topic. "
+    "Each question should have exactly 4 options and one correct answer. "
+    "Output STRICT JSON with this schema: "
+    '{"questions": [{"q": "question text", "options": ["A", "B", "C", "D"], "answer_index": 0}]}'
 )
 
-USER_PROMPT_TEMPLATE = (
-    "Create a quiz for the topic: '{topic}'.\n"
-    "Difficulty: {difficulty}.\n"
-    "Number of questions: {num_questions}.\n\n"
-    "Return STRICT JSON with this exact schema:\n"
-    "{\n"
-    "  \"questions\": [\n"
-    "    {\n"
-    "      \"q\": \"<question text>\",\n"
-    "      \"options\": [\"A\", \"B\", \"C\", \"D\"],\n"
-    "      \"answer_index\": <0-based index of correct option>,\n"
-    "      \"explanation\": \"<1-2 line explanation>\"\n"
-    "    }\n"
-    "  ]\n"
-    "}\n\n"
-    "Rules:\n"
-    "- EXACTLY {num_questions} items in 'questions'.\n"
-    "- Every question MUST have exactly 4 options.\n"
-    "- 'answer_index' MUST be an integer 0-3.\n"
-    "- No markdown, no backticks, no commentary outside JSON."
-)
+LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
 
-def call_quiz_model(topic: str, num_questions: int, difficulty: str):
+def call_model(topic, num_questions):
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": USER_PROMPT_TEMPLATE.format(
-            topic=topic, num_questions=num_questions, difficulty=difficulty
-        )}
+        {"role": "user", "content": f"Generate a {num_questions}-question quiz on the topic: {topic}"}
     ]
-    resp = openai.chat.completions.create(
+
+    response = openai.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=messages,
-        temperature=0.4,
     )
-    raw = resp.choices[0].message.content.strip()
-    return parse_strict_json(raw)
 
-
-def parse_strict_json(txt: str):
-    """Try to coerce the model output into valid JSON by clipping to outermost braces."""
-    # Find first '{' and last '}' to reduce chance of trailing commentary
-    start = txt.find('{')
-    end = txt.rfind('}')
-    if start != -1 and end != -1:
-        txt = txt[start:end+1]
-    return json.loads(txt)
-
-
-@app.route('/', methods=['GET'])
-def home():
-    return render_template_string(FORM_TMPL)
-
-
-@app.route('/generate', methods=['POST'])
-def generate():
-    topic = request.form.get('topic', '').strip()
-    difficulty = request.form.get('difficulty', 'Medium')
-    num = request.form.get('num_questions', '5')
+    # Be tolerant to BoltIOT/OpenAI SDK differences
     try:
-        num = int(num)
-        if num < 1 or num > 20:
-            raise ValueError
+        content = response.choices[0].message.content
+    except (AttributeError, KeyError, TypeError):
+        content = response["choices"][0]["message"]["content"]
+
+    return content.strip()
+
+
+@app.route("/", methods=["GET"])
+def home():
+    return render_template_string(TEMPLATE, quiz=None, result=None, letters=LETTERS)
+
+
+@app.route("/generate", methods=["POST"])
+def generate():
+    topic = request.form.get("topic", "").strip()
+    num_questions = request.form.get("num_questions", "5")
+    try:
+        num_questions = max(1, min(20, int(num_questions)))
     except ValueError:
-        num = 5
+        num_questions = 5
 
     if not topic:
-        topic = "General Knowledge"
+        return jsonify({"error": "Please enter a valid topic."}), 400
 
     try:
-        data = call_quiz_model(topic, num, difficulty)
-        session['quiz'] = data
-        session['meta'] = {'topic': topic, 'difficulty': difficulty}
-        return redirect(url_for('quiz'))
+        quiz_json = call_model(topic, num_questions)
+        print("RAW MODEL OUTPUT:\n", quiz_json)  # debug log
+        try:
+            quiz_data = json.loads(quiz_json)
+        except json.JSONDecodeError as e:
+            return jsonify({
+                "error": f"JSON parsing failed: {e}",
+                "raw": quiz_json
+            }), 500
+
+        session['quiz'] = quiz_data
+        return render_template_string(TEMPLATE, quiz=quiz_data, result=None, letters=LETTERS)
     except Exception as e:
-        return render_template_string(ERROR_TMPL, error=str(e))
+        return jsonify({"error": f"Model error: {e}"}), 500
 
 
-@app.route('/quiz', methods=['GET'])
-def quiz():
-    quiz = session.get('quiz')
-    meta = session.get('meta')
-    if not quiz:
-        return redirect(url_for('home'))
-    return render_template_string(QUIZ_TMPL, quiz=quiz, meta=meta)
-
-
-@app.route('/submit', methods=['POST'])
+@app.route("/submit", methods=["POST"])
 def submit():
-    quiz = session.get('quiz')
-    meta = session.get('meta')
+    quiz = session.get("quiz")
     if not quiz:
-        return redirect(url_for('home'))
+        return redirect(url_for("home"))
 
-    questions = quiz.get('questions', [])
-    user_answers = []
+    questions = quiz.get("questions", [])
     score = 0
     results = []
 
     for i, q in enumerate(questions):
-        correct_idx = q.get('answer_index')
-        user_choice = request.form.get(f'q{i}')
+        correct_index = q.get("answer_index")
+        user_index = request.form.get(f"q{i}")
         try:
-            user_choice = int(user_choice) if user_choice is not None else None
-        except ValueError:
-            user_choice = None
+            user_index = int(user_index)
+        except (TypeError, ValueError):
+            user_index = None
 
-        is_correct = (user_choice == correct_idx)
+        is_correct = (user_index == correct_index)
         if is_correct:
             score += 1
         results.append({
-            'q': q.get('q'),
-            'options': q.get('options', []),
-            'correct_idx': correct_idx,
-            'user_idx': user_choice,
-            'explanation': q.get('explanation', ''),
-            'is_correct': is_correct,
+            "question": q.get("q"),
+            "options": q.get("options"),
+            "correct": correct_index,
+            "selected": user_index,
+            "is_correct": is_correct
         })
 
-    return render_template_string(RESULT_TMPL, score=score, total=len(questions), results=results, meta=meta)
+    return render_template_string(
+        TEMPLATE,
+        quiz=None,
+        result={"score": score, "total": len(questions), "details": results},
+        letters=LETTERS
+    )
 
 
-FORM_TMPL = """
+TEMPLATE = r"""
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dynamic Quiz Generator</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <style>
-    body { background: radial-gradient(circle at 10% 20%, #eef2ff 0%, #e0e7ff 50%, #c7d2fe 100%); min-height: 100vh; }
-    .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(14px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); padding: 1.5rem; }
-  </style>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
-<body>
+<body class="bg-light">
   <div class="container py-5">
-    <h1 class="mb-4 text-primary">🧠 Dynamic Quiz Generator</h1>
-    <div class="glass-card">
-      <form action="/generate" method="POST">
+    <h1 class="text-center mb-4 text-primary">📝 Dynamic Quiz Generator</h1>
+    {% if not quiz and not result %}
+      <form method="POST" action="/generate">
         <div class="mb-3">
-          <label class="form-label">Topic</label>
-          <input type="text" name="topic" class="form-control" placeholder="e.g. Object Oriented Programming in Java" required />
+          <label for="topic" class="form-label">Enter a Topic:</label>
+          <input type="text" class="form-control" name="topic" placeholder="e.g., Python Basics" required>
         </div>
-        <div class="row">
-          <div class="col-md-4 mb-3">
-            <label class="form-label">Difficulty</label>
-            <select name="difficulty" class="form-select">
-              <option>Easy</option>
-              <option selected>Medium</option>
-              <option>Hard</option>
-            </select>
-          </div>
-          <div class="col-md-4 mb-3">
-          <label class="form-label">Number of Questions (1-20)</label>
-          <input type="number" min="1" max="20" value="5" name="num_questions" class="form-control" required />
+        <div class="mb-3">
+          <label for="num_questions" class="form-label">Number of Questions (1-20):</label>
+          <input type="number" class="form-control" name="num_questions" min="1" max="20" value="5" required>
         </div>
-        </div>
-        <div class="d-flex justify-content-end">
-          <button type="submit" class="btn btn-primary">Generate Quiz</button>
-        </div>
+        <button type="submit" class="btn btn-primary">Generate Quiz</button>
       </form>
-    </div>
-  </div>
-</body>
-</html>
-"""
+    {% endif %}
 
-
-QUIZ_TMPL = """
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Take Quiz</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <style>
-    body { background: radial-gradient(circle at 10% 20%, #eef2ff 0%, #e0e7ff 50%, #c7d2fe 100%); min-height: 100vh; }
-    .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(14px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); padding: 1.5rem; }
-    .question { margin-bottom: 1.25rem; }
-  </style>
-</head>
-<body>
-  <div class="container py-5">
-    <h1 class="mb-2 text-primary">📝 Quiz</h1>
-    <p class="text-muted">Topic: <strong>{{ meta.topic }}</strong> · Difficulty: <strong>{{ meta.difficulty }}</strong></p>
-    <form action="/submit" method="POST" class="glass-card">
+    {% if quiz %}
+    <form method="POST" action="/submit" class="mt-4">
       {% for q in quiz.questions %}
-        <div class="question">
-          <p class="fw-semibold">{{ loop.index }}. {{ q.q }}</p>
+        {% set q_index = loop.index0 %}
+        <div class="mb-3">
+          <p><strong>{{ loop.index }}. {{ q.q }}</strong></p>
           {% for opt in q.options %}
+            {% set o_index = loop.index0 %}
             <div class="form-check">
-              <input class="form-check-input" type="radio" name="q{{ loop.parent.index0 }}" id="q{{ loop.parent.index0 }}_{{ loop.index0 }}" value="{{ loop.index0 }}" required>
-              <label class="form-check-label" for="q{{ loop.parent.index0 }}_{{ loop.index0 }}">{{ opt }}</label>
+              <input class="form-check-input" type="radio" name="q{{ q_index }}" id="q{{ q_index }}_{{ o_index }}" value="{{ o_index }}" required>
+              <label class="form-check-label" for="q{{ q_index }}_{{ o_index }}">{{ opt }}</label>
             </div>
           {% endfor %}
         </div>
-        <hr/>
       {% endfor %}
-      <div class="d-flex justify-content-end">
-        <button class="btn btn-success" type="submit">Submit</button>
-      </div>
+      <button type="submit" class="btn btn-success">Submit Quiz</button>
     </form>
-  </div>
-</body>
-</html>
-"""
+    {% endif %}
 
-
-RESULT_TMPL = """
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Results</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
-  <style>
-    body { background: radial-gradient(circle at 10% 20%, #eef2ff 0%, #e0e7ff 50%, #c7d2fe 100%); min-height: 100vh; }
-    .glass-card { background: rgba(255, 255, 255, 0.6); backdrop-filter: blur(14px) saturate(160%); border: 1px solid rgba(255, 255, 255, 0.35); border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.06); padding: 1.5rem; }
-    .correct { color: #16a34a; }
-    .wrong { color: #dc2626; }
-  </style>
-</head>
-<body>
-  <div class="container py-5">
-    <h1 class="mb-3 text-primary">📊 Your Score</h1>
-    <div class="glass-card mb-4">
-      <h4>Score: {{ score }}/{{ total }}</h4>
-      <p class="text-muted">Topic: <strong>{{ meta.topic }}</strong> · Difficulty: <strong>{{ meta.difficulty }}</strong></p>
-      <a href="/" class="btn btn-outline-primary btn-sm">Generate New Quiz</a>
-    </div>
-
-    {% for r in results %}
-      <div class="glass-card mb-3">
-        <p class="fw-semibold">{{ loop.index }}. {{ r.q }}</p>
-        <ul>
-          {% for opt in r.options %}
-            <li
-              class="{% if loop.index0 == r.correct_idx %}correct{% endif %}{% if r.user_idx == loop.index0 and not r.is_correct %} wrong{% endif %}">
-              {{ opt }}
-              {% if loop.index0 == r.correct_idx %} <strong>(Correct)</strong>{% endif %}
-              {% if r.user_idx == loop.index0 and not r.is_correct %} <strong>(Your choice)</strong>{% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-        <p><em>Explanation:</em> {{ r.explanation }}</p>
+    {% if result %}
+      <div class="card mt-4">
+        <div class="card-body">
+          <h4 class="text-success">Your Score: {{ result.score }}/{{ result.total }}</h4>
+          <ul class="list-group mt-3">
+            {% for r in result.details %}
+              <li class="list-group-item">
+                <strong>{{ loop.index }}. {{ r.question }}</strong><br>
+                {% for opt in r.options %}
+                  {% set opt_index = loop.index0 %}
+                  <span class="d-block {% if opt_index == r.correct %}text-success{% elif opt_index == r.selected and not r.is_correct %}text-danger{% endif %}">
+                    {{ letters[opt_index] }}. {{ opt }}
+                    {% if opt_index == r.correct %} <strong>(Correct)</strong>{% endif %}
+                    {% if opt_index == r.selected and not r.is_correct %} <strong>(Your choice)</strong>{% endif %}
+                  </span>
+                {% endfor %}
+              </li>
+            {% endfor %}
+          </ul>
+          <a href="/" class="btn btn-outline-primary mt-3">Take Another Quiz</a>
+        </div>
       </div>
-    {% endfor %}
-  </div>
-</body>
-</html>
-"""
-
-
-ERROR_TMPL = """
-<!DOCTYPE html>
-<html lang="en" data-theme="light">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Error</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" />
-</head>
-<body>
-  <div class="container py-5">
-    <h1 class="text-danger">Error</h1>
-    <p>{{ error }}</p>
-    <a href="/" class="btn btn-primary">Back</a>
+    {% endif %}
   </div>
 </body>
 </html>
@@ -298,4 +190,4 @@ ERROR_TMPL = """
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080, debug=True)
