@@ -1,12 +1,20 @@
 from boltiotai import openai
 import os
 import json
-from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
+from flask import (
+    Flask,
+    render_template_string,
+    request,
+    jsonify,
+    session,
+    redirect,
+    url_for,
+)
 
 # ========================
 # OpenAI / BoltIOT config
 # ========================
-openai.api_key = os.environ.get('OPENAI_API_KEY', '')
+openai.api_key = os.environ.get("OPENAI_API_KEY", "")
 
 # ========================
 # Flask app config
@@ -27,7 +35,10 @@ LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 def call_model(topic, num_questions):
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": f"Generate a {num_questions}-question quiz on the topic: {topic}"}
+        {
+            "role": "user",
+            "content": f"Generate a {num_questions}-question quiz on the topic: {topic}",
+        },
     ]
 
     response = openai.chat.completions.create(
@@ -67,13 +78,14 @@ def generate():
         try:
             quiz_data = json.loads(quiz_json)
         except json.JSONDecodeError as e:
-            return jsonify({
-                "error": f"JSON parsing failed: {e}",
-                "raw": quiz_json
-            }), 500
+            return jsonify(
+                {"error": f"JSON parsing failed: {e}", "raw": quiz_json}
+            ), 500
 
-        session['quiz'] = quiz_data
-        return render_template_string(TEMPLATE, quiz=quiz_data, result=None, letters=LETTERS)
+        session["quiz"] = quiz_data
+        return render_template_string(
+            TEMPLATE, quiz=quiz_data, result=None, letters=LETTERS
+        )
     except Exception as e:
         return jsonify({"error": f"Model error: {e}"}), 500
 
@@ -96,22 +108,24 @@ def submit():
         except (TypeError, ValueError):
             user_index = None
 
-        is_correct = (user_index == correct_index)
+        is_correct = user_index == correct_index
         if is_correct:
             score += 1
-        results.append({
-            "question": q.get("q"),
-            "options": q.get("options"),
-            "correct": correct_index,
-            "selected": user_index,
-            "is_correct": is_correct
-        })
+        results.append(
+            {
+                "question": q.get("q"),
+                "options": q.get("options"),
+                "correct": correct_index,
+                "selected": user_index,
+                "is_correct": is_correct,
+            }
+        )
 
     return render_template_string(
         TEMPLATE,
         quiz=None,
         result={"score": score, "total": len(questions), "details": results},
-        letters=LETTERS
+        letters=LETTERS,
     )
 
 
@@ -189,5 +203,6 @@ TEMPLATE = r"""
 """
 
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080, debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080, debug=True)
+# updated code
